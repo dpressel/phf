@@ -254,6 +254,16 @@ static inline void exec(int argc, char **argv, size_t lambda, size_t alpha, size
 		double g_load = (double)n / phf.r;
 		warnx("r:%zu m:%zu d_max:%zu d_bits:%d k_bits:%.2f g_load:%.2f", phf.r, phf.m, phf.d_max, d_bits, k_bits, g_load);
 
+		begin = clock();		
+		PHF::IO::save(phf, "dont-care");
+		end = clock();
+		warnx("saved struct in %fs", (double)(end - begin) / CLOCKS_PER_SEC);
+		phf_freearray(phf.g, phf.r);
+		phf.r = 0;
+		begin = clock();		
+		PHF::IO::load(phf, "dont-care");
+		//PFH::IO::load(phf, "dont-care");
+		warnx("reloaded struct in %fs", (double)(end - begin) / CLOCKS_PER_SEC);
 		size_t x = 0;
 		begin = clock();
 		for (size_t i = 0; i < n; i++) {
