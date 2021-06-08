@@ -25,10 +25,12 @@
  */
 #ifndef PHF_H
 #define PHF_H
-
-#include <stddef.h>   /* size_t */
+#include <cassert>
+#include <cstddef>
+#include <cstring>
+#include <climits>
 #include <stdint.h>   /* UINT32_MAX uint32_t uint64_t */
-#include <stdbool.h>  /* bool */
+#include <cstdbool>  /* bool */
 #include <inttypes.h> /* PRIu32 PRIx32 */
 #include <sstream>
 #include <fstream>
@@ -38,7 +40,7 @@
 #else
 #  include <sys/stat.h>
 #endif
-
+#include <vector>
 #define PHF_BITS(T) (sizeof (T) * CHAR_BIT)
 #define PHF_HOWMANY(x, y) (((x) + ((y) - 1)) / (y))
 #define PHF_MIN(a, b) (((a) < (b))? (a) : (b))
@@ -134,7 +136,15 @@ typedef struct phf_string {
     size_t n;
 } phf_string_t;
 
+const uint32_t PHF_G_UINT8_MOD_R = 1;
+const uint32_t PHF_G_UINT8_BAND_R = 2;
+const uint32_t PHF_G_UINT16_MOD_R = 3;
+const uint32_t PHF_G_UINT16_BAND_R = 4;
+const uint32_t PHF_G_UINT32_MOD_R = 5;
+const uint32_t PHF_G_UINT32_BAND_R = 6;
+
 struct phf {
+    phf() : nodiv(false), seed(1792), r(0), m(0), g(NULL), d_max(0), g_op(0) {}
     bool nodiv;
     
     phf_seed_t seed;
@@ -144,15 +154,8 @@ struct phf {
     uint32_t *g; /* displacement map indexed by g(k) % r */
     
     size_t d_max; /* maximum displacement value in g */
-    
-    enum {
-	PHF_G_UINT8_MOD_R = 1,
-	PHF_G_UINT8_BAND_R,
-	PHF_G_UINT16_MOD_R,
-	PHF_G_UINT16_BAND_R,
-	PHF_G_UINT32_MOD_R,
-	PHF_G_UINT32_BAND_R,
-    } g_op;
+
+    uint32_t g_op;
 }; /* struct phf */
 
 
@@ -174,7 +177,7 @@ namespace PHF {
 	void compact(struct phf *);
 
 	template<typename key_t>
-	phf_hash_t hash(struct phf *, key_t);
+	phf_hash_t hash(const struct phf *, key_t);
 
 	void destroy(struct phf *);
 }
@@ -194,10 +197,10 @@ extern template phf_error_t PHF::init<uint64_t, false>(struct phf *, const uint6
 extern template phf_error_t PHF::init<phf_string_t, false>(struct phf *, const phf_string_t[], const size_t, const size_t, const size_t, const phf_seed_t);
 extern template phf_error_t PHF::init<std::string, false>(struct phf *, const std::string[], const size_t, const size_t, const size_t, const phf_seed_t);
 
-extern template phf_hash_t PHF::hash<uint32_t>(struct phf *, uint32_t);
-extern template phf_hash_t PHF::hash<uint64_t>(struct phf *, uint64_t);
-extern template phf_hash_t PHF::hash<phf_string_t>(struct phf *, phf_string_t);
-extern template phf_hash_t PHF::hash<std::string>(struct phf *, std::string);
+extern template phf_hash_t PHF::hash<uint32_t>(const struct phf *, uint32_t);
+extern template phf_hash_t PHF::hash<uint64_t>(const struct phf *, uint64_t);
+extern template phf_hash_t PHF::hash<phf_string_t>(const struct phf *, phf_string_t);
+extern template phf_hash_t PHF::hash<std::string>(const struct phf *, std::string);
 
 
 #ifdef __clang__
@@ -608,7 +611,7 @@ namespace PHF {
 	    ofs << hash.r << std::endl;
 	    ofs << hash.m << std::endl;
 	    ofs << hash.d_max << std::endl;
-	    
+	    ofs << hash.g_op << std::endl;
 	    std::ofstream bin(file_in_dir(dir, "hash.dat"), std::ios::out | std::ios::binary);
 	    bin.write((const char*)hash.g, hash.r*4);
 	    bin.close();
@@ -622,6 +625,7 @@ namespace PHF {
 	    ifs >> r;
 	    ifs >> hash.m;
 	    ifs >> hash.d_max;
+	    ifs >> hash.g_op;
 	    std::ifstream bin(file_in_dir(dir, "hash.dat"), std::ios::in | std::ios::binary);
 	    if (r != hash.r || hash.g == NULL) {
 		std::cout << "Reallocating" << std::endl;
@@ -930,7 +934,7 @@ retry:
 	g = NULL;
 
 	phf->d_max = d_max;
-	phf->g_op = (nodiv)? phf::PHF_G_UINT32_BAND_R : phf::PHF_G_UINT32_MOD_R;
+	phf->g_op = (nodiv)? PHF_G_UINT32_BAND_R : PHF_G_UINT32_MOD_R;
 
 	error = 0;
 
@@ -971,8 +975,8 @@ void PHF::compact(struct phf *phf) {
     void *tmp;
     
     switch (phf->g_op) {
-    case phf::PHF_G_UINT32_MOD_R:
-    case phf::PHF_G_UINT32_BAND_R:
+    case PHF_G_UINT32_MOD_R:
+    case PHF_G_UINT32_BAND_R:
 	break;
     default:
 	return; /* already compacted */
@@ -980,11 +984,11 @@ void PHF::compact(struct phf *phf) {
     
     if (phf->d_max <= 255) {
 	phf_memmove(reinterpret_cast<uint8_t *>(phf->g), reinterpret_cast<uint32_t *>(phf->g), phf->r);
-	phf->g_op = (phf->nodiv)? phf::PHF_G_UINT8_BAND_R : phf::PHF_G_UINT8_MOD_R;
+	phf->g_op = (phf->nodiv)? PHF_G_UINT8_BAND_R : PHF_G_UINT8_MOD_R;
 	size = sizeof (uint8_t);
     } else if (phf->d_max <= 65535) {
 	phf_memmove(reinterpret_cast<uint16_t *>(phf->g), reinterpret_cast<uint32_t *>(phf->g), phf->r);
-	phf->g_op = (phf->nodiv)? phf::PHF_G_UINT16_BAND_R : phf::PHF_G_UINT16_MOD_R;
+	phf->g_op = (phf->nodiv)? PHF_G_UINT16_BAND_R : PHF_G_UINT16_MOD_R;
 	size = sizeof (uint16_t);
     } else {
 	return; /* nothing to compact */
@@ -1025,19 +1029,19 @@ inline phf_hash_t phf_hash_(map_t *g, key_t k, uint32_t seed, size_t r, size_t m
 } /* phf_hash_() */
 
 template<typename T>
- phf_hash_t PHF::hash(struct phf *phf, T k) {
+ phf_hash_t PHF::hash(const struct phf *phf, T k) {
     switch (phf->g_op) {
-    case phf::PHF_G_UINT8_MOD_R:
+    case PHF_G_UINT8_MOD_R:
 	return phf_hash_<false>(reinterpret_cast<uint8_t *>(phf->g), k, phf->seed, phf->r, phf->m);
-    case phf::PHF_G_UINT8_BAND_R:
+    case PHF_G_UINT8_BAND_R:
 	return phf_hash_<true>(reinterpret_cast<uint8_t *>(phf->g), k, phf->seed, phf->r, phf->m);
-    case phf::PHF_G_UINT16_MOD_R:
+    case PHF_G_UINT16_MOD_R:
 	return phf_hash_<false>(reinterpret_cast<uint16_t *>(phf->g), k, phf->seed, phf->r, phf->m);
-    case phf::PHF_G_UINT16_BAND_R:
+    case PHF_G_UINT16_BAND_R:
 	return phf_hash_<true>(reinterpret_cast<uint16_t *>(phf->g), k, phf->seed, phf->r, phf->m);
-    case phf::PHF_G_UINT32_MOD_R:
+    case PHF_G_UINT32_MOD_R:
 	return phf_hash_<false>(reinterpret_cast<uint32_t *>(phf->g), k, phf->seed, phf->r, phf->m);
-    case phf::PHF_G_UINT32_BAND_R:
+    case PHF_G_UINT32_BAND_R:
 	return phf_hash_<true>(reinterpret_cast<uint32_t *>(phf->g), k, phf->seed, phf->r, phf->m);
     default:
 	abort();
@@ -1045,14 +1049,15 @@ template<typename T>
     }
 } /* PHF::hash() */
 
-template phf_hash_t PHF::hash<uint32_t>(struct phf *, uint32_t);
-template phf_hash_t PHF::hash<uint64_t>(struct phf *, uint64_t);
-template phf_hash_t PHF::hash<phf_string_t>(struct phf *, phf_string_t);
-template phf_hash_t PHF::hash<std::string>(struct phf *, std::string);
+template phf_hash_t PHF::hash<uint32_t>(const struct phf *, uint32_t);
+template phf_hash_t PHF::hash<uint64_t>(const struct phf *, uint64_t);
+template phf_hash_t PHF::hash<phf_string_t>(const struct phf *, phf_string_t);
+template phf_hash_t PHF::hash<std::string>(const struct phf *, std::string);
 
 void PHF::destroy(struct phf *phf) {
 	free(phf->g);
 	phf->g = NULL;
 } /* PHF::destroy() */
+
 
 #endif /* PHF_H */
