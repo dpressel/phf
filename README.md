@@ -19,7 +19,7 @@ http://cmph.sourceforge.net/chd.html.
 
 # About this fork #
 
-This fork targets C++ only and removes comditional compilation switches for Lua or C++ only.  The goal is a minimalistic version of the original library as a single header.  This also removes the optional sample from the original codebase, and its associated helper functions
+This fork targets C++ only and removes conditional compilation switches for Lua or C++ only.  The goal is a minimalistic version of the original library as a single header.  This also removes the optional sample from the original codebase, and its associated helper functions
 
 ### Compilation ###
 
